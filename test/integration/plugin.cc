@@ -20,6 +20,10 @@
 // specialized plugin interfaces.
 #define IGNITION_UNITTEST_SPECIALIZED_PLUGIN_ACCESS
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 #include <gtest/gtest.h>
 #include <string>
 #include <vector>
