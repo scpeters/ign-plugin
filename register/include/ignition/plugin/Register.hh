@@ -45,11 +45,7 @@
 /// IGNITION_ADD_PLUGIN(PluginClass, Interface1, Interface2, Interface3)
 /// \endcode
 ///
-/// If your library has multiple translation units (.cpp files) and you want to
-/// register plugins in multiple translation units, use this
-/// ignition/plugin/Register.hh header in ONE of the translation units, and then
-/// the ignition/plugin/RegisterMore.hh header in all of the rest of the
-/// translation units.
+/// This macro can be used across multiple translation units.
 #define IGNITION_ADD_PLUGIN(PluginClass, ...) \
   DETAIL_IGNITION_ADD_PLUGIN(PluginClass, __VA_ARGS__)
 

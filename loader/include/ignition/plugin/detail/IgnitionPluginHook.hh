@@ -27,8 +27,6 @@ namespace ignition
 {
 namespace plugin
 {
-namespace v1
-{
 namespace detail
 {
   /// \private IgnitionPluginHook_v2 is the hook that's used by plugin libraries
@@ -36,9 +34,18 @@ namespace detail
   ///
   /// \param[in] _inputInfo
   ///   Plugin information to pass to the loader
-  IGNITION_PLUGIN_LOADER_VISIBLE void IgnitionPluginHook(
-      const Info &_inputInfo);
-}
+  ///
+  /// \param[in] _inputInfoSize
+  ///   Sanity checker to make sure that the plugin info compiled to the
+  ///   expected size in the plugin library.
+  ///
+  /// \param[in] _inputInfoAlign
+  ///   Sanity checker to make sure that the plugin info compiled to the
+  ///   expected alignment in the plugin library.
+  void IGNITION_PLUGIN_LOADER_VISIBLE IgnitionPluginHook_v1(
+      const info_v1::Info &_inputInfo,
+      std::size_t _inputInfoSize,
+      std::size_t _inputInfoAlign);
 }
 }
 }

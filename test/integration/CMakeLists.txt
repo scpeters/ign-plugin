@@ -40,3 +40,8 @@ foreach(test
   endif()
 
 endforeach()
+
+if(TARGET INTEGRATION_native_plugin)
+  target_link_libraries(INTEGRATION_native_plugin
+    ${PROJECT_LIBRARY_TARGET_NAME}-register)
+endif()

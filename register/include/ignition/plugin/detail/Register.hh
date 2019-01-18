@@ -30,211 +30,7 @@
 #include <ignition/plugin/EnablePluginFromThis.hh>
 #include <ignition/plugin/Info.hh>
 #include <ignition/plugin/utility.hh>
-
-
-#if defined _WIN32 || defined __CYGWIN__
-  #ifdef __GNUC__
-    #define DETAIL_IGN_PLUGIN_VISIBLE __attribute__ ((dllexport))
-  #else
-    #define DETAIL_IGN_PLUGIN_VISIBLE __declspec(dllexport)
-  #endif
-#else
-  #if __GNUC__ >= 4
-    #define DETAIL_IGN_PLUGIN_VISIBLE __attribute__ ((visibility ("default")))
-  #else
-    #define DETAIL_IGN_PLUGIN_VISIBLE
-  #endif
-#endif
-
-// extern "C" ensures that the symbol name of IgnitionPluginHook
-// does not get mangled by the compiler, so we can easily use dlsym(~) to
-// retrieve it.
-extern "C"
-{
-  /// \private IgnitionPluginHook is the hook that's used by the Loader to
-  /// retrieve Info from a shared library that provides plugins.
-  ///
-  /// The symbol is explicitly exported (visibility is turned on) using
-  /// DETAIL_IGN_PLUGIN_VISIBLE to ensure that dlsym(~) is able to find it.
-  ///
-  /// DO NOT CALL THIS FUNCTION DIRECTLY OR CREATE YOUR OWN IMPLEMENTATION OF IT
-  /// This function is used by the Registrar and Loader classes. Nothing else
-  /// should be using it.
-  ///
-  /// \param[in] _inputSingleInfo
-  ///   This argument is used by Registrar to input a single instance of
-  ///   plugin::Info data. Loader will set this to a nullptr when trying to
-  ///   receive data from the hook.
-  ///
-  /// \param[out] _outputAllInfo
-  ///   Loader will pass in a pointer to a pointer of an InfoMap pertaining to
-  ///   the highest API version that it knows of. If this IgnitionPluginHook was
-  ///   built against a version of ign-plugin that provides an equal or greater
-  ///   API version, then IgnitionPluginHook will modify *_outputAllInfo to
-  ///   point at its internal &InfoMap that corresponds to the requested API
-  ///   version, which is identified by _inputAndOutputAPIVersion.
-  ///
-  ///   If _inputAndOutputAPIVersion is greater than the highest API version
-  ///   known by this IgnitionPluginHook, then IgnitionPluginHook will not
-  ///   modify _outputAllInfo, and instead it will change the value pointed to
-  ///   by _inputAndOutputAPIVersion so that it points to the highest API
-  ///   version known by this IgnitionPluginHook. At that point, Loader can call
-  ///   this function again, but using the older API version which known by this
-  ///   IgnitionPluginHook.
-  ///
-  /// \param[in,out] _inputAndOutputAPIVersion
-  ///   Loader will pass in a pointer to the highest API version that it knows.
-  ///   If that API version is higher than what this IgnitionPluginHook is
-  ///   compatible with, then this IgnitionPluginHook will change the value
-  ///   pointed to by _inputAndOutputAPIVersion to the value of the highest API
-  ///   version that it knows.
-  ///
-  /// \param[in,out] _inputAndOutputInfoSize
-  ///   This input/output parameter is used for sanity checking. The Loader
-  ///   inputs a pointer to the size that it expects for the Info data
-  ///   structure, and IgnitionPluginHook verifies that this expectation matches
-  ///   its own Info size. Then, IgnitionPluginHook will overwrite the value
-  ///   pointed to so that it matches its own Info size value.
-  ///
-  /// \param[in,out] _inputAndOutputInfoAlign
-  ///   Similar to _inputAndOutputInfoSize, this is used for sanity checking. It
-  ///   inspects and returns the alignof(Info) value instead of the sizeof(Info)
-  ///   value.
-  DETAIL_IGN_PLUGIN_VISIBLE void IgnitionPluginHook(
-      const void *_inputSingleInfo,
-      const void ** const _outputAllInfo,
-      int *_inputAndOutputAPIVersion,
-      std::size_t *_inputAndOutputInfoSize,
-      std::size_t *_inputAndOutputInfoAlign)
-#ifdef IGN_PLUGIN_REGISTER_MORE_TRANS_UNITS
-  ; /* NOLINT */
-#else
-  // ATTENTION: If you get a linking error complaining about
-  // multiple definitions of IgnitionPluginHook,
-  // then make sure that all but one of your
-  // library's translation units (.cpp files) includes the
-  // <ignition/plugin/RegisterMore.hh> header instead of
-  // <ignition/plugin/Register.hh>.
-  //
-  // Only ONE and exactly ONE .cpp file in your library should include
-  // Register.hh. All the rest should include RegisterMore.hh. It does not
-  // matter which .cpp file you choose, as long as it gets compiled into your
-  // plugin library.
-  // ^^^^^^^^^^^^^^^^^^^^^ READ ABOVE FOR LINKING ERRORS ^^^^^^^^^^^^^^^^^^^^^
-  {
-    using InfoMap = ignition::plugin::InfoMap;
-    // We use a static variable here so that we can accumulate multiple
-    // Info objects from multiple plugin registration calls within one
-    // shared library, and then provide it all to the Loader through this
-    // single hook.
-    static InfoMap pluginMap;
-
-    if (_inputSingleInfo)
-    {
-      // When _inputSingleInfo is not a nullptr, it means that one of the plugin
-      // registration macros is providing us with some Info.
-      const ignition::plugin::Info *input =
-          static_cast<const ignition::plugin::Info*>(_inputSingleInfo);
-
-      InfoMap::iterator it;
-      bool inserted;
-
-      // We use insert(~) to ensure that we do not accidentally overwrite some
-      // existing information for the plugin that has this name.
-      std::tie(it, inserted) =
-          pluginMap.insert(std::make_pair(input->name, *input));
-
-      if (!inserted)
-      {
-        // If the object was not inserted, then an entry already existed for
-        // this plugin type. We should still insert each of the interface map
-        // entries and aliases provided by the input info, just in case any of
-        // them are missing from the currently existing entry. This allows the
-        // user to specify different interfaces and aliases for the same plugin
-        // type using different macros in different locations or across multiple
-        // translation units.
-        ignition::plugin::Info &entry = it->second;
-
-        for (const auto &interfaceMapEntry : input->interfaces)
-          entry.interfaces.insert(interfaceMapEntry);
-
-        for (const auto &aliasSetEntry : input->aliases)
-          entry.aliases.insert(aliasSetEntry);
-      }
-    }
-
-    if (_outputAllInfo)
-    {
-      // When _outputAllInfo is not a nullptr, it means that a Loader is
-      // trying to retrieve Info from us.
-
-      // The Loader should provide valid pointers to these fields as part
-      // of a handshake procedure.
-      if (nullptr == _inputAndOutputAPIVersion ||
-          nullptr == _inputAndOutputInfoSize ||
-          nullptr == _inputAndOutputInfoAlign)
-      {
-        // This should never happen, or else the function is being misused.
-        // LCOV_EXCL_START
-        return;
-        // LCOV_EXCL_STOP
-      }
-
-      bool agreement = true;
-
-      if (ignition::plugin::INFO_API_VERSION != *_inputAndOutputAPIVersion)
-      {
-        // LCOV_EXCL_START
-        agreement = false;
-        // LCOV_EXCL_STOP
-      }
-
-      if (sizeof(ignition::plugin::Info) != *_inputAndOutputInfoSize)
-      {
-        // LCOV_EXCL_START
-        agreement = false;
-        // LCOV_EXCL_STOP
-      }
-
-      if (alignof(ignition::plugin::Info) != *_inputAndOutputInfoAlign)
-      {
-        // LCOV_EXCL_START
-        agreement = false;
-        // LCOV_EXCL_STOP
-      }
-
-      // The handshake parameters that were passed into us are overwritten with
-      // the values that we have on our end. That way, if our Info API is
-      // lower than that of the Loader, then the Loader will know
-      // to call this function using an older version of Info, and then
-      // convert it to the newer version on the loader side.
-      //
-      // This implementation might change when new API versions are introduced,
-      // but this current implementation will still be forward compatible with
-      // new API versions.
-      *_inputAndOutputAPIVersion = ignition::plugin::INFO_API_VERSION;
-      *_inputAndOutputInfoSize = sizeof(ignition::plugin::Info);
-      *_inputAndOutputInfoAlign = alignof(ignition::plugin::Info);
-
-      // If the size, alignment, or API do not agree, we should return without
-      // outputting any of the plugin info; otherwise, we could get a
-      // segmentation fault.
-      //
-      // We will return the current API version to the Loader, and it may
-      // then decide to attempt the call to this function again with the correct
-      // API version if it supports backwards/forwards compatibility.
-      if (!agreement)
-      {
-        // LCOV_EXCL_START
-        return;
-        // LCOV_EXCL_STOP
-      }
-
-      *_outputAllInfo = &pluginMap;
-    }
-  }
-#endif
-}
+#include <ignition/plugin/detail/IgnitionPluginHook.hh>
 
 namespace ignition
 {
@@ -401,7 +197,7 @@ IGN_UTILS_WARN_RESUME__NON_VIRTUAL_DESTRUCTOR
 
           // Send this information as input to this library's global repository
           // of plugins.
-          IgnitionPluginHook(&info, nullptr, nullptr, nullptr, nullptr);
+          IgnitionPluginHook_v1(info, sizeof(Info), alignof(Info));
         }
 
 
@@ -428,7 +224,7 @@ IGN_UTILS_WARN_RESUME__NON_VIRTUAL_DESTRUCTOR
 
           // Send this information as input to this library's global repository
           // of plugins.
-          IgnitionPluginHook(&info, nullptr, nullptr, nullptr, nullptr);
+          IgnitionPluginHook_v1(info, sizeof(Info), alignof(Info));
         }
       };
     }

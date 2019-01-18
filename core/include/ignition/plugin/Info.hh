@@ -33,19 +33,13 @@ namespace ignition
 {
   namespace plugin
   {
-    /// \brief sentinel value to check if a plugin was built with the same
-    /// version of the Info struct
-    //
-    /// This must be incremented when the Info struct changes
-    const int INFO_API_VERSION = 1;
-
     // We use an inline namespace to assist in forward-compatibility. Eventually
     // we may want to support a version-2 of the Info API, in which case
     // we will remove the "inline" declaration here, and create a new inline
-    // namespace called "v2". This original Info object will continue to
+    // namespace called "info_v2". This original Info object will continue to
     // be accessible for backwards compatibility, and even its symbol name in
-    // the ABI should remain the same.
-    inline namespace v1
+    // the ABI will remain the same.
+    inline namespace info_v1
     {
       /// \brief Holds info required to construct a plugin
       struct IGNITION_PLUGIN_VISIBLE Info

@@ -68,11 +68,9 @@ simply need to make sure that the compiler can resolve the names of the classes
 that you pass to it (and there will be a compilation error if it cannot).
 
 It is now possible to register plugins across **multiple translation units**
-within a single library. To do this, use `#include <ignition/plugin/Register.hh>`
-in **exactly one** of your library's translation units, and then use
-`#include <ignition/plugin/RegisterMore.hh>` in all other translation units. It
-does not matter which translation unit you choose to be the "first", as long as
-you choose exactly one.
+within a single library. Simply put `#include <ignition/plugin/Register.hh>` in
+each translation unit that wants to register a plugin or interface, and call
+`IGNITION_ADD_PLUGIN`.
 
 
 # Loading a library

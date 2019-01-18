@@ -19,18 +19,10 @@
 #ifndef IGNITION_PLUGIN_REGISTERMORE_HH_
 #define IGNITION_PLUGIN_REGISTERMORE_HH_
 
-/// If your library already has a translation unit (.cpp file) containing
-/// \code
-///     #include <ignition/plugin/Register.hh>
-/// \endcode
-///
-/// then any other translation units that want to register plugins should use
-/// \code
-///     #include <ignition/plugin/RegisterMore.hh>
-/// \endcode
-///
-/// But at least one translation unit of your library must contain Register.hh.
-#define IGN_PLUGIN_REGISTER_MORE_TRANS_UNITS
+// NOTE: This header <RegisterMore.hh> is no longer needed!
+// Simply #include <ignition/plugin/Register.hh> in as many translation units
+// as needed.
+
 #include <ignition/plugin/Register.hh>
 
 #endif

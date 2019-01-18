@@ -139,17 +139,6 @@ namespace ignition
 
         this->info = _info;
 
-        if (!_dlHandlePtr)
-        {
-          // LCOV_EXCL_START
-          std::cerr << "Received Info for [" << _info->name << "], "
-                    << "but we were not provided a shared library handle. "
-                    << "This should never happen! Please report this bug!\n";
-          assert(false);
-          return;
-          // LCOV_EXCL_STOP
-        }
-
         // Create a std::shared_ptr to a struct which ensures that the
         // _dlHandlePtr will remain alive for as long as this plugin instance
         // exists.
