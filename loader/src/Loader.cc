@@ -75,13 +75,65 @@ namespace ignition
     /// plugins will have access to these plugins.
     static Registry dynamicPlugins;
 
-    std::vector<Info> ExtractRegistry(const Registry &_registry)
+    /// Move the plugin information out of a registry and into a vector of
+    /// ConstInfoPtrs for consumption by the Loader.
+    std::vector<ConstInfoPtr> ExtractRegistry(const Registry &_registry)
     {
-      std::vector<Info> info;
+      std::vector<ConstInfoPtr> info;
       for(const auto &entry : _registry.pluginMap)
-        info.push_back(entry.second);
+      {
+        // Demangle the name of the plugin
+        auto plugin = std::make_shared<Info>(entry.second);
+        plugin->name = DemangleSymbol(plugin->name);
+
+        // Make a list of the demangled interface names to make lookup more
+        // convenient later on.
+        for (auto const &interface : plugin->interfaces)
+          plugin->demangledInterfaces.insert(DemangleSymbol(interface.first));
+
+        info.push_back(plugin);
+      }
 
       return info;
+    }
+
+    ///
+    struct RegistryArchiveEntry
+    {
+      std::weak_ptr<void> dlHandle;
+      std::vector<ConstInfoPtr> info;
+    };
+
+    /// \brief This static variable holds records of plugin information from
+    ///
+    static std::unordered_map<void*, RegistryArchiveEntry> archive;
+
+    void UnloadDlHandle(void *dlHandle)
+    {
+      std::cout << " ======== About to find archive entry in destructor" << std::endl;
+      const auto it = archive.find(dlHandle);
+
+      if(it == archive.end())
+      {
+        std::cout << " ====== no entry in archive for destructor" << std::endl;
+      }
+      else
+      {
+        std::cout << " ===== attempting to lock weak_ptr in destructor" << std::endl;
+        auto ptr = it->second.dlHandle.lock();
+        if(ptr)
+        {
+          std::cout << " ======= cannot lock weak_ptr in destructor" << std::endl;
+        }
+        else
+        {
+          std::cout << " ====== Use count for plugin library: " << ptr.use_count()
+                    << std::endl;
+        }
+        archive.erase(it);
+      }
+
+      dlclose(dlHandle);
     }
 
     /////////////////////////////////////////////////
@@ -101,7 +153,7 @@ namespace ignition
 
       /// \brief The pointer to the IgnitionPluginHook function of the loaded
       /// library.
-      public: std::vector<Info> OldIgnitionHook(
+      public: std::vector<ConstInfoPtr> OldIgnitionHook(
           void *_infoFuncPtr,
           const std::string &_pathToLibrary) const;
 
@@ -111,12 +163,12 @@ namespace ignition
       /// \param[in] _pathToLibrary The path that the library was loaded from
       /// (used for debug purposes)
       /// \return All the Info provided by the loaded library.
-      public: std::vector<Info> ReceivePlugins(
+      public: std::vector<ConstInfoPtr> ReceivePlugins(
         const std::shared_ptr<void> &_dlHandle,
         const std::string &_pathToLibrary) const;
 
       public: std::unordered_set<std::string> StorePlugins(
-          std::vector<Info> _loadedPlugins,
+          std::vector<ConstInfoPtr> _loadedPlugins,
           const std::shared_ptr<void> _dlHandle);
 
       /// \sa Loader::ForgetLibrary()
@@ -188,10 +240,10 @@ namespace ignition
       /// \brief A mutex that gets locked while a library is being loaded. This
       /// ensures that plugins get registered only into the loaders that
       /// specifically requested them.
-      public: static std::mutex loadingMutex;
+      public: static std::recursive_mutex loadingMutex;
     };
 
-    std::mutex Loader::Implementation::loadingMutex;
+    std::recursive_mutex Loader::Implementation::loadingMutex;
 
     /////////////////////////////////////////////////
     std::string Loader::PrettyStr() const
@@ -274,7 +326,9 @@ namespace ignition
     std::unordered_set<std::string> Loader::LoadLib(
         const std::string &_pathToLibrary)
     {
-      std::unique_lock<std::mutex> lock(Implementation::loadingMutex);
+      std::cout << " ----------- LoadLib locking loading mutex" << std::endl;
+      std::unique_lock<std::recursive_mutex> lock(Implementation::loadingMutex);
+      std::cout << " ----------- LoadLib locked the loading mutex" << std::endl;
 
       registeringDynamicPlugins = true;
       registrationOkay = true;
@@ -417,6 +471,7 @@ namespace ignition
 // using glibc-2.2.
 #define RTLD_NOLOAD 0
 #endif
+      --------- destructor locked the loadingMutex
 
       void *dlHandle = dlopen(_pathToLibrary.c_str(),
                               RTLD_NOLOAD | RTLD_LAZY | RTLD_LOCAL);
@@ -579,7 +634,14 @@ namespace ignition
         // it is no longer active), so we should create a reference counting
         // handle for it.
         dlHandlePtr = std::shared_ptr<void>(
-              dlHandle, [](void *ptr) { dlclose(ptr); }); // NOLINT
+              dlHandle, [&](void *ptr)
+        {
+          std::cout << " --------- destructor locking loadingMutex" << std::endl;
+          std::unique_lock<std::recursive_mutex> lock(loadingMutex);
+          std::cout << " --------- destructor locked the loadingMutex" << std::endl;
+          UnloadDlHandle(ptr);
+          std::cout << " --------- destructor releasing loadingMutex" << std::endl;
+        }); // NOLINT
 
         it->second = dlHandlePtr;
       }
@@ -588,7 +650,7 @@ namespace ignition
     }
 
     /////////////////////////////////////////////////
-    std::vector<Info> Loader::Implementation::OldIgnitionHook(
+    std::vector<ConstInfoPtr> Loader::Implementation::OldIgnitionHook(
         void *_infoFuncPtr,
         const std::string &_pathToLibrary) const
     {
@@ -600,7 +662,7 @@ namespace ignition
                 << "recompile this library with the newest version of "
                 << "ignition-plugin at your earliest convenience.\n";
 
-      std::vector<Info> loadedPlugins;
+      std::vector<ConstInfoPtr> loadedPlugins;
 
       using PluginLoadFunctionSignature =
           void(*)(void * const, const void ** const,
@@ -678,23 +740,42 @@ namespace ignition
 
       for (const InfoMap::value_type &info : *allInfo)
       {
-        loadedPlugins.push_back(info.second);
+        loadedPlugins.push_back(std::make_shared<Info>(info.second));
       }
 
       return loadedPlugins;
     }
 
     /////////////////////////////////////////////////
-    std::vector<Info> Loader::Implementation::ReceivePlugins(
+    std::vector<ConstInfoPtr> Loader::Implementation::ReceivePlugins(
         const std::shared_ptr<void> &_dlHandle,
         const std::string& _pathToLibrary) const
     {
-      std::vector<Info> loadedPlugins;
+      std::vector<ConstInfoPtr> loadedPlugins;
 
       // This function should never be called with a nullptr _dlHandle
       assert(_dlHandle &&
              "Bug in code: Loader::Implementation::LoadPlugins was called with "
              "a nullptr value for _dlHandle.");
+
+      const auto it = archive.find(_dlHandle.get());
+      if (it != archive.end())
+      {
+        // This plugin library has been loaded before
+        const auto oldDlHandle = it->second.dlHandle.lock();
+        if (oldDlHandle)
+        {
+          assert(_dlHandle == oldDlHandle &&
+                 "Bug in code: The current dlHandle of a library does not "
+                 "match up with the archived value!");
+
+          std::cout << " =========== grabbed plugins from archive" << std::endl;
+
+          // This library has remained loaded since the previous time it was
+          // loaded, so we need to get its plugins from the archive.
+          return it->second.info;
+        }
+      }
 
       // Receive old-fashioned (deprecated) plugins
       const std::string infoSymbol = "IgnitionPluginHook";
@@ -703,9 +784,13 @@ namespace ignition
         loadedPlugins = OldIgnitionHook(infoFuncPtr, _pathToLibrary);
 
       // Receive the new type of
-      const std::vector<Info> registryInfo = ExtractRegistry(dynamicPlugins);
+      const std::vector<ConstInfoPtr> registryInfo =
+          ExtractRegistry(dynamicPlugins);
+
       loadedPlugins.insert(loadedPlugins.end(),
                            registryInfo.begin(), registryInfo.end());
+
+      std::cout << " ================ Reading plugins from " << &dynamicPlugins << std::endl;
 
       if (loadedPlugins.empty())
       {
@@ -713,38 +798,32 @@ namespace ignition
                   << "load any plugins!\n";
       }
 
+      archive[_dlHandle.get()] = {_dlHandle, loadedPlugins};
+
       return loadedPlugins;
     }
 
     /////////////////////////////////////////////////
     std::unordered_set<std::string> Loader::Implementation::StorePlugins(
-        std::vector<Info> _loadedPlugins,
+        std::vector<ConstInfoPtr> _loadedPlugins,
         const std::shared_ptr<void> _dlHandle)
     {
       std::unordered_set<std::string> newPlugins;
 
-      for (Info &plugin : _loadedPlugins)
+      for (const ConstInfoPtr &plugin : _loadedPlugins)
       {
-        // Demangle the plugin name before creating an entry for it.
-        plugin.name = DemangleSymbol(plugin.name);
-
         // Add the plugin's aliases to the alias map
-        for (const std::string &alias : plugin.aliases)
-          this->aliases[alias].insert(plugin.name);
-
-        // Make a list of the demangled interface names for later convenience.
-        for (auto const &interface : plugin.interfaces)
-          plugin.demangledInterfaces.insert(DemangleSymbol(interface.first));
+        for (const std::string &alias : plugin->aliases)
+          this->aliases[alias].insert(plugin->name);
 
         // Add the plugin to the map
-        this->plugins.insert(
-              std::make_pair(plugin.name, std::make_shared<Info>(plugin)));
+        this->plugins.insert(std::make_pair(plugin->name, plugin));
 
         // Add the plugin's name to the set of newPlugins
-        newPlugins.insert(plugin.name);
+        newPlugins.insert(plugin->name);
 
         // Save the dl handle for this plugin
-        this->pluginToDlHandlePtrs[plugin.name] = _dlHandle;
+        this->pluginToDlHandlePtrs[plugin->name] = _dlHandle;
       }
 
       this->dlHandleToPluginMap[_dlHandle.get()] = newPlugins;
@@ -754,6 +833,7 @@ namespace ignition
       if (_dlHandle)
         dynamicPlugins.clear();
 
+      std::cout << " ----------- LoadLib releasing loading mutex" << std::endl;
       return newPlugins;
     }
 
@@ -798,6 +878,10 @@ namespace ignition
     /////////////////////////////////////////////////
     bool Loader::Implementation::ForgetLibrary(void *_dlHandle)
     {
+      std::cout << " ----------- ForgetLibrary locking loading mutex" << std::endl;
+      std::unique_lock<std::recursive_mutex> lock(loadingMutex);
+      std::cout << " ----------- ForgetLibrary locked the loading mutex" << std::endl;
+
       if (_dlHandle == nullptr)
       {
         // If _dlHandle is a nullptr, that means the user asked to forget the
@@ -848,6 +932,7 @@ namespace ignition
       // taken care of automatically by the std::shared_ptr that manages the
       // shared library handle.
 
+      std::cout << " ----------- ForgetLibrary releasing loading mutex" << std::endl;
       return true;
     }
 
@@ -858,6 +943,19 @@ namespace ignition
         const std::size_t _inputInfoSize,
         const std::size_t _inputInfoAlign)
     {
+      TODO: Have IgnitionPluginHook_v1 return a unique ID that the plugin library
+            can then pass back during its teardown phase. During the teardown,
+            the archive can be cleaned up.
+      std::cout << " ============== Attempting to load " << _inputInfo.name << std::endl;
+      if(registeringDynamicPlugins)
+      {
+        std::cout << " ++++++++++ as a dynamic plugin" << std::endl;
+      }
+      else
+      {
+        std::cout << " ---------- as a native plugin" << std::endl;
+      }
+
       if (sizeof(info_v1::Info) != _inputInfoSize
           || alignof(info_v1::Info) != _inputInfoAlign)
       {
@@ -875,6 +973,8 @@ namespace ignition
 
       Registry &registry =
           registeringDynamicPlugins? dynamicPlugins : nativePlugins ;
+
+      std::cout << " =============== giving plugin info to " << &registry << std::endl;
 
       InfoMap::iterator it;
       bool inserted;
