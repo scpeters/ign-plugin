@@ -54,12 +54,14 @@ namespace ignition
     /// \brief Demangle the ABI typeinfo name of a symbol into a human-readable
     /// version.
     /// \param[in] _symbol
-    ///   Pass in the result of typeid(T).name()
+    ///   Pass in the result of Symbol<T>()
     /// \return The demangled (human-readable) version of the symbol name
     std::string IGNITION_PLUGIN_VISIBLE DemangleSymbol(
         const std::string &_symbol);
 
-	/////////////////////////////////////////////////
+    /////////////////////////////////////////////////
+    /// \brief Get the raw decorated symbol of the class or struct T.
+    /// \return The raw decorated symbol of the class or struct T.
 	template <typename T>
 	const char * Symbol()
     {

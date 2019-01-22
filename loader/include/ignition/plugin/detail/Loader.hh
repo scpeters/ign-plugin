@@ -32,7 +32,8 @@ namespace ignition
     template <typename Interface>
     std::unordered_set<std::string> Loader::PluginsImplementing() const
     {
-      return this->PluginsImplementing(typeid(Interface).name(), false);
+      return this->PluginsImplementing(
+            ignition::plugin::Symbol<Interface>(), false);
     }
 
     template <typename PluginPtrType>

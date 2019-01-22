@@ -70,12 +70,14 @@ TEST(Loader, LoadExistingLibrary)
   EXPECT_EQ(3u, pl.PluginsImplementing<::test::util::DummyNameBase>().size());
   EXPECT_EQ(3u, pl.PluginsImplementing("test::util::DummyNameBase").size());
   EXPECT_EQ(3u, pl.PluginsImplementing(
-              typeid(test::util::DummyNameBase).name(), false).size());
+              ignition::plugin::Symbol<test::util::DummyNameBase>(),
+              false).size());
 
   EXPECT_EQ(1u, pl.PluginsImplementing<::test::util::DummyDoubleBase>().size());
   EXPECT_EQ(1u, pl.PluginsImplementing("test::util::DummyDoubleBase").size());
   EXPECT_EQ(1u, pl.PluginsImplementing(
-              typeid(test::util::DummyDoubleBase).name(), false).size());
+              ignition::plugin::Symbol<test::util::DummyDoubleBase>(),
+              false).size());
 
   EXPECT_EQ(3u, pl.AllPlugins().size());
 

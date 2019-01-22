@@ -158,7 +158,7 @@ namespace ignition
     SpecializedPlugin<SpecInterface>::SpecializedPlugin()
       : privateSpecializedInterfaceIterator(
           this->PrivateGetOrCreateIterator(
-            typeid(SpecInterface).name()))
+            Symbol<SpecInterface>()))
     {
       // Do nothing
     }

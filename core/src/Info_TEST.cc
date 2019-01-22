@@ -31,8 +31,8 @@ struct SomePlugin : public SomeInterface
 TEST(Info, Clear)
 {
   ignition::plugin::Info info;
-  info.symbol = typeid(SomePlugin).name();
-  info.name = ignition::plugin::DemangleSymbol(typeid(SomePlugin).name());
+  info.symbol = ignition::plugin::Symbol<SomePlugin>();
+  info.name = ignition::plugin::DemangleSymbol(info.symbol);
 
   info.factory = [=]()
   {
@@ -46,7 +46,7 @@ TEST(Info, Clear)
 
   info.interfaces.insert(
       std::make_pair(
-        typeid(SomeInterface).name(),
+        ignition::plugin::Symbol<SomeInterface>(),
         [=](void *v_ptr)
   {
     SomePlugin *d_ptr = static_cast<SomePlugin*>(v_ptr);

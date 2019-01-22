@@ -22,6 +22,7 @@
 #include <memory>
 #include <string>
 #include <ignition/plugin/Plugin.hh>
+#include <ignition/plugin/utility.hh>
 
 namespace ignition
 {
@@ -32,7 +33,7 @@ namespace ignition
     Interface *Plugin::QueryInterface()
     {
       return static_cast<Interface*>(
-            this->PrivateQueryInterface(typeid(Interface).name()));
+            this->PrivateQueryInterface(Symbol<Interface>()));
     }
 
     //////////////////////////////////////////////////
@@ -40,7 +41,7 @@ namespace ignition
     const Interface *Plugin::QueryInterface() const
     {
       return static_cast<const Interface*>(
-            this->PrivateQueryInterface(typeid(Interface).name()));
+            this->PrivateQueryInterface(Symbol<Interface>()));
     }
 
     //////////////////////////////////////////////////
@@ -103,7 +104,7 @@ namespace ignition
     template <class Interface>
     bool Plugin::HasInterface() const
     {
-      return this->HasInterface(typeid(Interface).name(), false);
+      return this->HasInterface(Symbol<Interface>(), false);
     }
   }
 }

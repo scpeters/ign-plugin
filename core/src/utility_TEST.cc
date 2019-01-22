@@ -55,7 +55,8 @@ class SomeSymbol { };
 /////////////////////////////////////////////////
 TEST(Demangle, RealSymbol)
 {
-  EXPECT_EQ("SomeSymbol", DemangleSymbol(typeid(SomeSymbol).name()));
+  EXPECT_EQ("SomeSymbol",
+            DemangleSymbol(ignition::plugin::Symbol<SomeSymbol>()));
 }
 
 template <typename T>
@@ -64,8 +65,9 @@ class SomeTemplate { };
 /////////////////////////////////////////////////
 TEST(Demangle, TemplatedSymbol)
 {
-  EXPECT_EQ("SomeTemplate<SomeSymbol>",
-            DemangleSymbol(typeid(SomeTemplate<SomeSymbol>).name()));
+  EXPECT_EQ(
+        "SomeTemplate<SomeSymbol>",
+        DemangleSymbol(ignition::plugin::Symbol<SomeTemplate<SomeSymbol>>()));
 }
 
 /////////////////////////////////////////////////

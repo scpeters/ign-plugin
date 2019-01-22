@@ -74,7 +74,7 @@ namespace ignition
                         "PLUGIN.");
 
           interfaces.insert(std::make_pair(
-                typeid(Interface).name(),
+                Symbol<Interface>(),
                 [=](void* v_ptr)
                 {
                     PluginClass *d_ptr = static_cast<PluginClass*>(v_ptr);
@@ -112,7 +112,7 @@ namespace ignition
         public: static void AddIt(Info::InterfaceCastingMap &_interfaces)
         {
           _interfaces.insert(std::make_pair(
-                  typeid(EnablePluginFromThis).name(),
+                  Symbol<EnablePluginFromThis>(),
                   [=](void *v_ptr)
                   {
                     PluginClass *d_ptr = static_cast<PluginClass*>(v_ptr);
@@ -152,7 +152,7 @@ namespace ignition
           Info info;
 
           // Set the name of the plugin
-          info.symbol = typeid(PluginClass).name();
+          info.symbol = Symbol<PluginClass>();
 
           // Create a factory for generating new plugin instances
           info.factory = [=]()
@@ -332,7 +332,8 @@ IGN_UTILS_WARN_RESUME__NON_VIRTUAL_DESTRUCTOR
   DETAIL_IGNITION_ADD_PLUGIN(FactoryType::Producing<ProductType>, FactoryType) \
   DETAIL_IGNITION_ADD_PLUGIN_ALIAS( \
       FactoryType::Producing<ProductType>, \
-      ::ignition::plugin::DemangleSymbol(typeid(ProductType).name()))
+      ::ignition::plugin::DemangleSymbol( \
+        ::ignition::plugin::Symbol<ProductType>()))
 
 
 //////////////////////////////////////////////////

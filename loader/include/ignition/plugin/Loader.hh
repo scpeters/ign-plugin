@@ -67,9 +67,9 @@ namespace ignition
       /// InterfacesImplemented() returns demangled versions of the interface
       /// names.
       ///
-      /// If you want to pass in a mangled version of an interface name, e.g.
-      /// the result that would be produced by typeid(T).name(), then set
-      /// `demangled` to false.
+      /// If you want to pass in a mangled (decorated) version of an interface
+      /// name, e.g. the result that would be produced by
+      /// ignition::plugin::Symbol<T>(), then set `demangled` to false.
       ///
       /// \param[in] _interface
       ///   Name of an interface

@@ -133,7 +133,7 @@ namespace ignition
       /// std::string. Note that this expects the name to be mangled.
       /// \param[in] _demangled If _interfaceName is demangled, set this to
       /// true. If you are instead using the raw mangled name that gets provided
-      /// by typeid(T).name(), then set _demangled to false.
+      /// by Symbol<T>(), then set _demangled to false.
       public: bool HasInterface(const std::string &_interfaceName,
                                 const bool _demangled = true) const;
 
