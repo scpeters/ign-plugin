@@ -58,6 +58,17 @@ namespace ignition
     /// \return The demangled (human-readable) version of the symbol name
     std::string IGNITION_PLUGIN_VISIBLE DemangleSymbol(
         const std::string &_symbol);
+
+	/////////////////////////////////////////////////
+	template <typename T>
+	const char * Symbol()
+    {
+    #ifdef _MSC_VER
+      return typeid(T).raw_name();
+    #else
+      return typeid(T).name();
+    #endif
+    }
   }
 }
 

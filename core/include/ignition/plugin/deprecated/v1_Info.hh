@@ -88,7 +88,7 @@ namespace ignition
       using ConstInfoPtr = std::shared_ptr<const Info>;
       using InfoMap = std::unordered_map<std::string, InfoPtr>;
 
-      info_v1::Info Update(const Info &_oldInfo);
+      info_v1::Info IGNITION_PLUGIN_VISIBLE Update(const Info &_oldInfo);
     }
   }
 }
