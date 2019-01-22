@@ -42,10 +42,21 @@ namespace detail
   /// \param[in] _inputInfoAlign
   ///   Sanity checker to make sure that the plugin info compiled to the
   ///   expected alignment in the plugin library.
-  void IGNITION_PLUGIN_LOADER_VISIBLE IgnitionPluginHook_v1(
+  ///
+  /// \returns A handle to the info that was created by this call to
+  /// IgnitionPluginHook_v1. Plugin libraries should hang onto this in their
+  /// statically constructed plugin hook classes. In the destructor, the plugin
+  /// library should pass this handle to IgnitionPluginHookCleanup_v1 in order
+  /// to inform the application that the library is being unloaded.
+  std::shared_ptr<const void>
+  IGNITION_PLUGIN_LOADER_VISIBLE IgnitionPluginHook_v1(
       const info_v1::Info &_inputInfo,
       std::size_t _inputInfoSize,
       std::size_t _inputInfoAlign);
+
+  /// \private Plugin libraries should call this function in the destructor
+  void IGNITION_PLUGIN_LOADER_VISIBLE IgnitionPluginHookCleanup_v1(
+      std::shared_ptr<const void> &_infoHandle);
 }
 }
 }

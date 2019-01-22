@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2017 Open Source Robotics Foundation
+ * Copyright (C) 2019 Open Source Robotics Foundation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,19 +15,10 @@
  *
  */
 
+#ifndef IGNITION_PLUGIN_DEPRECATED_V1_INFO_HH_
+#define IGNITION_PLUGIN_DEPRECATED_V1_INFO_HH_
 
-#ifndef IGNITION_PLUGIN_INFO_HH_
-#define IGNITION_PLUGIN_INFO_HH_
-
-#include <functional>
-#include <memory>
-#include <set>
-#include <string>
-#include <unordered_map>
-
-#include <ignition/utilities/SuppressWarning.hh>
-
-#include <ignition/plugin/Export.hh>
+#include <ignition/plugin/Info.hh>
 
 namespace ignition
 {
@@ -39,7 +30,7 @@ namespace ignition
     // namespace called "info_v2". This original Info object will continue to
     // be accessible for backwards compatibility, and even its symbol name in
     // the ABI will remain the same.
-    inline namespace info_v1
+    namespace v1
     {
       /// \brief Holds info required to construct a plugin
       struct IGNITION_PLUGIN_VISIBLE Info
@@ -47,12 +38,7 @@ namespace ignition
         /// \brief Clear out all information contained in this Info object
         void Clear();
 
-        /// \brief Symbol (ABI mangled) for this plugin
-        IGN_UTILS_WARN_IGNORE__DLL_INTERFACE_MISSING
-        std::string symbol;
-        IGN_UTILS_WARN_RESUME__DLL_INTERFACE_MISSING
-
-        /// \brief The name (demangled symbol) of the plugin
+        /// \brief The name of the plugin
         IGN_UTILS_WARN_IGNORE__DLL_INTERFACE_MISSING
         std::string name;
         IGN_UTILS_WARN_RESUME__DLL_INTERFACE_MISSING
@@ -96,8 +82,11 @@ namespace ignition
       using InfoPtr = std::shared_ptr<Info>;
       using ConstInfoPtr = std::shared_ptr<const Info>;
       using InfoMap = std::unordered_map<std::string, InfoPtr>;
+
+      info_v1::Info Update(const Info &_oldInfo);
     }
   }
 }
+
 
 #endif

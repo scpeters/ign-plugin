@@ -33,6 +33,8 @@
 #include <ignition/plugin/utility.hh>
 #include <ignition/plugin/detail/IgnitionPluginHook.hh>
 
+#include <ignition/plugin/deprecated/v1_Info.hh>
+
 namespace ignition
 {
   namespace plugin
@@ -64,7 +66,7 @@ namespace ignition
     /// unit belonging to the application.
     ///
     /// Every Loader instance will have access to these plugins.
-    static Registry nativePlugins;
+    static Registry kNativePlugins;
 
     /// \brief This collection of plugins has been loaded from a shared
     /// library. This gets cleared at the end of each call to LoadLib(~) so
@@ -73,15 +75,56 @@ namespace ignition
     ///
     /// Only the Loader instances that asked to load the library of these
     /// plugins will have access to these plugins.
-    static Registry dynamicPlugins;
+    static Registry kDynamicPlugins;
 
-    std::vector<Info> ExtractRegistry(const Registry &_registry)
+    struct Archive
     {
-      std::vector<Info> info;
-      for(const auto &entry : _registry.pluginMap)
+      using WeakConstInfoPtr = std::weak_ptr<const Info>;
+
+      using DlHandleToInfo =
+        std::unordered_map<const void*, std::vector<WeakConstInfoPtr>>;
+      DlHandleToInfo dlHandleToInfo;
+
+      using InfoToDlHandle = std::unordered_map<const void*, void*>;
+      InfoToDlHandle infoToDlHandle;
+    };
+
+    /// \brief This static variable holds weak references to plugin information
+    /// from all the libraries that have been loaded in the past. If the library
+    /// is still loaded, then the weak references
+    static Archive kArchive;
+
+
+    /////////////////////////////////////////////////
+    std::vector<ConstInfoPtr> ExtractRegistry(const Registry &_registry)
+    {
+      std::vector<ConstInfoPtr> info;
+      for (const auto &entry : _registry.pluginMap)
         info.push_back(entry.second);
 
       return info;
+    }
+
+    /////////////////////////////////////////////////
+    void ArchivePluginInfo(
+        const std::vector<ConstInfoPtr> &_info,
+        const std::shared_ptr<void> &_dlHandle)
+    {
+      // If there is no plugin info, then the library that was loaded was not a
+      // plugin library and should not be given an archive entry at all. The
+      // archive relies on plugin libraries to clean themselves out of the
+      // archive when they unload, so adding non-plugin libraries to the archive
+      // will pollute it and lead to bugs in the future.
+      if (_info.empty())
+        return;
+
+      auto &archiveEntry = kArchive.dlHandleToInfo[_dlHandle.get()];
+
+      for (const auto &entry : _info)
+      {
+        archiveEntry.push_back(entry);
+        kArchive.infoToDlHandle[entry.get()] = _dlHandle.get();
+      }
     }
 
     /////////////////////////////////////////////////
@@ -101,7 +144,7 @@ namespace ignition
 
       /// \brief The pointer to the IgnitionPluginHook function of the loaded
       /// library.
-      public: std::vector<Info> OldIgnitionHook(
+      public: std::vector<ConstInfoPtr> OldIgnitionHook(
           void *_infoFuncPtr,
           const std::string &_pathToLibrary) const;
 
@@ -111,12 +154,12 @@ namespace ignition
       /// \param[in] _pathToLibrary The path that the library was loaded from
       /// (used for debug purposes)
       /// \return All the Info provided by the loaded library.
-      public: std::vector<Info> ReceivePlugins(
+      public: std::vector<ConstInfoPtr> ReceivePlugins(
         const std::shared_ptr<void> &_dlHandle,
         const std::string &_pathToLibrary) const;
 
       public: std::unordered_set<std::string> StorePlugins(
-          std::vector<Info> _loadedPlugins,
+          std::vector<ConstInfoPtr> _loadedPlugins,
           const std::shared_ptr<void> _dlHandle);
 
       /// \sa Loader::ForgetLibrary()
@@ -271,6 +314,45 @@ namespace ignition
     }
 
     /////////////////////////////////////////////////
+    std::unordered_set<std::string> CheckForNativePluginSymbols(
+        const std::shared_ptr<void> &_dlHandle)
+    {
+      std::unordered_set<std::string> plugins;
+
+      for (const auto &entry : kNativePlugins.pluginMap)
+      {
+        const auto &info = entry.second;
+
+        std::string typeSymbol;
+
+      #if defined(_MSC_VER)
+        // TODO(MXG): Find out how to interpret class symbol names for MSVC
+        // libraries
+      #else
+        // If the compiler is not MSVC, we'll assume that the Itanium ABI is
+        // being used. That's the ABI used by GCC and Clang.
+        typeSymbol = "_ZTI" + info->symbol;
+      #endif
+
+        void *symbolHandle = dlsym(_dlHandle.get(), typeSymbol.c_str());
+        if (symbolHandle)
+          plugins.insert(info->name);
+      }
+
+    #if not defined(__GNUC__) && not defined(__clang__) && not defined(_MSC_VER)
+      if (plugins.empty())
+      {
+        std::cerr << "[ignition::plugin::Loader::LoadLib] Warning: Your "
+                  << "compiler was not recognized, so "
+                  << "ignition::plugin::Loader::LoadLib might not work as "
+                  << "intended!\n";
+      }
+    #endif
+
+      return plugins;
+    }
+
+    /////////////////////////////////////////////////
     std::unordered_set<std::string> Loader::LoadLib(
         const std::string &_pathToLibrary)
     {
@@ -294,10 +376,30 @@ namespace ignition
       if (nullptr == dlHandle)
         return {};
 
-      // Found a shared library, does it have the symbols we're looking for?
-      return this->dataPtr->StorePlugins(
-            this->dataPtr->ReceivePlugins(dlHandle, _pathToLibrary),
-            dlHandle);
+      std::unordered_set<std::string> loadedPlugins =
+          this->dataPtr->StorePlugins(
+            this->dataPtr->ReceivePlugins(dlHandle, _pathToLibrary), dlHandle);
+
+      // Clear the list of dynamically loaded plugins
+      kDynamicPlugins.clear();
+
+      if (loadedPlugins.empty())
+      {
+        // The list of loaded plugins may be empty if this is a library that was
+        // linked to the application at compile-time, and therefore its plugins
+        // were already loaded at the time the application initialized. To find
+        // out if this is the case, we will search to see if any of the native
+        // plugin symbols can be found in this library.
+        loadedPlugins = CheckForNativePluginSymbols(dlHandle);
+
+        if (loadedPlugins.empty())
+        {
+          std::cerr << "The plugin library [" << _pathToLibrary << "] failed "
+                    << "to load any plugins!\n";
+        }
+      }
+
+      return loadedPlugins;
     }
 
     /////////////////////////////////////////////////
@@ -495,7 +597,7 @@ namespace ignition
     /////////////////////////////////////////////////
     Loader::Implementation::Implementation()
     {
-      this->StorePlugins(ExtractRegistry(nativePlugins), nullptr);
+      this->StorePlugins(ExtractRegistry(kNativePlugins), nullptr);
     }
 
     /////////////////////////////////////////////////
@@ -588,7 +690,7 @@ namespace ignition
     }
 
     /////////////////////////////////////////////////
-    std::vector<Info> Loader::Implementation::OldIgnitionHook(
+    std::vector<ConstInfoPtr> Loader::Implementation::OldIgnitionHook(
         void *_infoFuncPtr,
         const std::string &_pathToLibrary) const
     {
@@ -600,7 +702,7 @@ namespace ignition
                 << "recompile this library with the newest version of "
                 << "ignition-plugin at your earliest convenience.\n";
 
-      std::vector<Info> loadedPlugins;
+      std::vector<ConstInfoPtr> loadedPlugins;
 
       using PluginLoadFunctionSignature =
           void(*)(void * const, const void ** const,
@@ -616,9 +718,10 @@ namespace ignition
       const int INFO_API_VERSION = 1;
 
       int version = INFO_API_VERSION;
-      std::size_t size = sizeof(info_v1::Info);
-      std::size_t alignment = alignof(info_v1::Info);
-      const InfoMap *allInfo = nullptr;
+      std::size_t size = sizeof(v1::Info);
+      std::size_t alignment = alignof(v1::Info);
+
+      const std::unordered_map<std::string, v1::Info> *allInfo = nullptr;
 
       // Note: static_cast cannot be used to convert from a T** to a void**
       // because of the possibility of breaking the type system by assigning a
@@ -654,13 +757,13 @@ namespace ignition
         return loadedPlugins;
       }
 
-      if (sizeof(Info) != size || alignof(Info) != alignment)
+      if (sizeof(v1::Info) != size || alignof(v1::Info) != alignment)
       {
         std::cerr << "The plugin::Info size or alignment are not consistent "
                << "with the expected values for the library [" << _pathToLibrary
-               << "]:\n -- size: expected " << sizeof(Info)
+               << "]:\n -- size: expected " << sizeof(v1::Info)
                << " | received " << size << "\n -- alignment: expected "
-               << alignof(Info) << " | received " << alignment << "\n"
+               << alignof(v1::Info) << " | received " << alignment << "\n"
                << " -- We will not be able to safely load plugins from that "
                << "library.\n";
 
@@ -676,83 +779,93 @@ namespace ignition
         return loadedPlugins;
       }
 
-      for (const InfoMap::value_type &info : *allInfo)
+      for (const auto &entry : *allInfo)
       {
-        loadedPlugins.push_back(info.second);
+        loadedPlugins.push_back(
+              std::make_shared<info_v1::Info>(v1::Update(entry.second)));
       }
 
       return loadedPlugins;
     }
 
     /////////////////////////////////////////////////
-    std::vector<Info> Loader::Implementation::ReceivePlugins(
+    std::vector<ConstInfoPtr> Loader::Implementation::ReceivePlugins(
         const std::shared_ptr<void> &_dlHandle,
         const std::string& _pathToLibrary) const
     {
-      std::vector<Info> loadedPlugins;
+      std::vector<ConstInfoPtr> loadedPlugins;
 
       // This function should never be called with a nullptr _dlHandle
       assert(_dlHandle &&
-             "Bug in code: Loader::Implementation::LoadPlugins was called with "
-             "a nullptr value for _dlHandle.");
+             "Bug in code: Loader::Implementation::ReceivePlugins "
+             "was called with a nullptr value for _dlHandle.");
 
-      // Receive old-fashioned (deprecated) plugins
+      const auto archiveIt = kArchive.dlHandleToInfo.find(_dlHandle.get());
+      if (archiveIt != kArchive.dlHandleToInfo.end())
+      {
+        for (const auto &weakInfo : archiveIt->second)
+        {
+          const auto info = weakInfo.lock();
+          if (info)
+          {
+            loadedPlugins.push_back(info);
+          }
+          else
+          {
+            std::cerr << "[ignition::plugin::Loader::LoadLib] Error: Failed "
+                      << "to lock an archived ConstInfoPtr for ["
+                      << _pathToLibrary << "]. This should never happen! "
+                      << "Please report this bug!\n";
+          }
+        }
+
+        return loadedPlugins;
+      }
+
+      // Receive old-fashioned (deprecated) plugin info
       const std::string infoSymbol = "IgnitionPluginHook";
       void *infoFuncPtr = dlsym(_dlHandle.get(), infoSymbol.c_str());
       if (infoFuncPtr)
         loadedPlugins = OldIgnitionHook(infoFuncPtr, _pathToLibrary);
 
-      // Receive the new type of
-      const std::vector<Info> registryInfo = ExtractRegistry(dynamicPlugins);
+      // Receive plugin info using the newer method
+      const std::vector<ConstInfoPtr> registryInfo =
+          ExtractRegistry(kDynamicPlugins);
+
       loadedPlugins.insert(loadedPlugins.end(),
                            registryInfo.begin(), registryInfo.end());
 
-      if (loadedPlugins.empty())
-      {
-        std::cerr << "The plugin library [" << _pathToLibrary << "] failed to "
-                  << "load any plugins!\n";
-      }
+      // Add this newly registered plugin info to the archive so that other
+      // Loaders can access it.
+      ArchivePluginInfo(loadedPlugins, _dlHandle);
 
       return loadedPlugins;
     }
 
     /////////////////////////////////////////////////
     std::unordered_set<std::string> Loader::Implementation::StorePlugins(
-        std::vector<Info> _loadedPlugins,
+        std::vector<ConstInfoPtr> _loadedPlugins,
         const std::shared_ptr<void> _dlHandle)
     {
       std::unordered_set<std::string> newPlugins;
 
-      for (Info &plugin : _loadedPlugins)
+      for (ConstInfoPtr &plugin : _loadedPlugins)
       {
-        // Demangle the plugin name before creating an entry for it.
-        plugin.name = DemangleSymbol(plugin.name);
-
         // Add the plugin's aliases to the alias map
-        for (const std::string &alias : plugin.aliases)
-          this->aliases[alias].insert(plugin.name);
-
-        // Make a list of the demangled interface names for later convenience.
-        for (auto const &interface : plugin.interfaces)
-          plugin.demangledInterfaces.insert(DemangleSymbol(interface.first));
+        for (const std::string &alias : plugin->aliases)
+          this->aliases[alias].insert(plugin->name);
 
         // Add the plugin to the map
-        this->plugins.insert(
-              std::make_pair(plugin.name, std::make_shared<Info>(plugin)));
+        this->plugins.insert(std::make_pair(plugin->name, plugin));
 
         // Add the plugin's name to the set of newPlugins
-        newPlugins.insert(plugin.name);
+        newPlugins.insert(plugin->name);
 
         // Save the dl handle for this plugin
-        this->pluginToDlHandlePtrs[plugin.name] = _dlHandle;
+        this->pluginToDlHandlePtrs[plugin->name] = _dlHandle;
       }
 
       this->dlHandleToPluginMap[_dlHandle.get()] = newPlugins;
-
-      // If these plugins were dynamically loaded, then clear the dynamic plugin
-      // registry so they don't get grabbed by another loader
-      if (_dlHandle)
-        dynamicPlugins.clear();
 
       return newPlugins;
     }
@@ -853,7 +966,7 @@ namespace ignition
 
     namespace detail
     {
-    void IgnitionPluginHook_v1(
+    std::shared_ptr<const void> IgnitionPluginHook_v1(
         const info_v1::Info &_inputInfo,
         const std::size_t _inputInfoSize,
         const std::size_t _inputInfoAlign)
@@ -870,36 +983,69 @@ namespace ignition
                   << " | received " << _inputInfoAlign << "\n";
 
         registrationOkay = false;
-        return;
+        return nullptr;
       }
 
       Registry &registry =
-          registeringDynamicPlugins? dynamicPlugins : nativePlugins ;
+          registeringDynamicPlugins? kDynamicPlugins : kNativePlugins;
 
       InfoMap::iterator it;
       bool inserted;
 
+      // Attempt to insert a dummy nullptr entry
       std::tie(it, inserted) =
-          registry.pluginMap.insert(
-            std::make_pair(_inputInfo.name, _inputInfo));
+          registry.pluginMap.insert(std::make_pair(_inputInfo.symbol, nullptr));
 
-      if (!inserted)
+      ignition::plugin::info_v1::InfoPtr &infoPtr = it->second;
+
+      if (inserted)
       {
-        // If the object was not inserted, then an entry already existed for
-        // this plugin type. We should still insert each of the interface map
-        // entries and aliases provided by the input info, just in case any of
-        // them are missing from the currently existing entry. This allows the
-        // user to specify different interfaces and aliases for the same plugin
-        // type using different macros in different locations or across multiple
-        // translation units.
-        ignition::plugin::info_v1::Info &entry = it->second;
+        // If the dummy nullptr was inserted, then we should replace it with the
+        // info that was actually passed in by constructing a new InfoPtr for
+        // it.
+        infoPtr = std::make_shared<info_v1::Info>(_inputInfo);
+        infoPtr->name = DemangleSymbol(infoPtr->symbol);
 
-        for (const auto &interfaceMapEntry : _inputInfo.interfaces)
-          entry.interfaces.insert(interfaceMapEntry);
+        for (const auto &interface : _inputInfo.interfaces)
+          infoPtr->demangledInterfaces.insert(DemangleSymbol(interface.first));
+      }
+      else
+      {
+        // If the dummy nullptr was not inserted, then an entry already existed
+        // for this plugin type. We should still insert each of the interface
+        // map entries and aliases provided by the input info, just in case any
+        // of them are missing from the currently existing entry. This allows
+        // the user to specify different interfaces and aliases for the same
+        // plugin type using different macros in different locations or across
+        // multiple translation units.
+
+        for (const auto &interface : _inputInfo.interfaces)
+        {
+          infoPtr->interfaces.insert(interface);
+          infoPtr->demangledInterfaces.insert(DemangleSymbol(interface.first));
+        }
 
         for (const auto &aliasSetEntry : _inputInfo.aliases)
-          entry.aliases.insert(aliasSetEntry);
+          infoPtr->aliases.insert(aliasSetEntry);
       }
+      return infoPtr;
+    }
+
+    void IgnitionPluginHookCleanup_v1(
+        std::shared_ptr<const void> &_handle)
+    {
+      const auto dlHandleIt = kArchive.infoToDlHandle.find(_handle.get());
+      if (dlHandleIt != kArchive.infoToDlHandle.end())
+      {
+        kArchive.dlHandleToInfo.erase(dlHandleIt->second);
+        kArchive.infoToDlHandle.erase(dlHandleIt);
+      }
+
+      // We should reset this shared_ptr from the ignition-plugin-loader library
+      // because this is the library that instantiated it. In MSVC, each DLL
+      // potentially has its own allocation heap, so it's safest to delete it
+      // from the same library that allocated it.
+      _handle.reset();
     }
     }
   }

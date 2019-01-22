@@ -151,7 +151,7 @@ namespace ignition
           Info info;
 
           // Set the name of the plugin
-          info.name = typeid(PluginClass).name();
+          info.symbol = typeid(PluginClass).name();
 
           // Create a factory for generating new plugin instances
           info.factory = [=]()
@@ -186,7 +186,7 @@ IGN_UTILS_WARN_RESUME__NON_VIRTUAL_DESTRUCTOR
 
         /// \brief This function registers a plugin along with a set of
         /// interfaces that it provides.
-        public: static void Register()
+        public: static std::shared_ptr<const void> Register()
         {
           // Make all info that the user has specified
           Info info = MakeInfo();
@@ -197,7 +197,7 @@ IGN_UTILS_WARN_RESUME__NON_VIRTUAL_DESTRUCTOR
 
           // Send this information as input to this library's global repository
           // of plugins.
-          IgnitionPluginHook_v1(info, sizeof(Info), alignof(Info));
+          return IgnitionPluginHook_v1(info, sizeof(Info), alignof(Info));
         }
 
 
@@ -249,8 +249,16 @@ IGN_UTILS_WARN_RESUME__NON_VIRTUAL_DESTRUCTOR
         { \
           ExecuteWhenLoadingLibrary##UniqueID() \
           { \
-            ::ignition::plugin::detail::Registrar<__VA_ARGS__>::Register(); \
+            handle = \
+              ::ignition::plugin::detail::Registrar<__VA_ARGS__>::Register(); \
           } \
+          \
+          ~ExecuteWhenLoadingLibrary##UniqueID() \
+          { \
+            ::ignition::plugin::detail::IgnitionPluginHookCleanup_v1(handle); \
+          } \
+          \
+          std::shared_ptr<const void> handle; \
         }; \
   \
         static ExecuteWhenLoadingLibrary##UniqueID execute##UniqueID; \

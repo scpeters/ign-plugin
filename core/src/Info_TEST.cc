@@ -18,6 +18,7 @@
 #include <gtest/gtest.h>
 
 #include <ignition/plugin/Info.hh>
+#include <ignition/plugin/utility.hh>
 
 struct SomeInterface
 {
@@ -30,7 +31,8 @@ struct SomePlugin : public SomeInterface
 TEST(Info, Clear)
 {
   ignition::plugin::Info info;
-  info.name = typeid(SomePlugin).name();
+  info.symbol = typeid(SomePlugin).name();
+  info.name = ignition::plugin::DemangleSymbol(typeid(SomePlugin).name());
 
   info.factory = [=]()
   {
@@ -59,6 +61,7 @@ TEST(Info, Clear)
     info.demangledInterfaces.insert(interfaceName.first);
   }
 
+  EXPECT_FALSE(info.symbol.empty());
   EXPECT_FALSE(info.name.empty());
   EXPECT_FALSE(info.aliases.empty());
   EXPECT_FALSE(info.interfaces.empty());
@@ -68,6 +71,7 @@ TEST(Info, Clear)
 
   info.Clear();
 
+  EXPECT_TRUE(info.symbol.empty());
   EXPECT_TRUE(info.name.empty());
   EXPECT_TRUE(info.aliases.empty());
   EXPECT_TRUE(info.interfaces.empty());
