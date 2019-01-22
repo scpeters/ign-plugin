@@ -19,6 +19,7 @@
 #define IGNITION_PLUGIN_DETAIL_IGNITIONPLUGINHOOK_HH_
 
 #include <cstddef>
+#include <memory>
 
 #include <ignition/plugin/loader/Export.hh>
 #include <ignition/plugin/Info.hh>

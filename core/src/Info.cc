@@ -53,7 +53,7 @@ namespace ignition
         newInfo.name = DemangleSymbol(_oldInfo.name);
         newInfo.aliases = _oldInfo.aliases;
 
-        for(const auto &interface : _oldInfo.interfaces)
+        for (const auto &interface : _oldInfo.interfaces)
         {
           newInfo.interfaces.insert(interface);
           newInfo.demangledInterfaces.insert(DemangleSymbol(interface.first));

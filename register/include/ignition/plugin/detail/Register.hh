@@ -19,6 +19,7 @@
 #ifndef IGNITION_PLUGIN_DETAIL_REGISTER_HH_
 #define IGNITION_PLUGIN_DETAIL_REGISTER_HH_
 
+#include <memory>
 #include <set>
 #include <string>
 #include <typeinfo>

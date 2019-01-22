@@ -18,6 +18,11 @@
 #ifndef IGNITION_PLUGIN_DEPRECATED_V1_INFO_HH_
 #define IGNITION_PLUGIN_DEPRECATED_V1_INFO_HH_
 
+#include <memory>
+#include <set>
+#include <string>
+#include <unordered_map>
+
 #include <ignition/plugin/Info.hh>
 
 namespace ignition
