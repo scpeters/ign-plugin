@@ -198,6 +198,27 @@ namespace ignition
             >::Specializer;
       };
 
+      /// \brief ComposePlugin provides a way for a multi-specialized Plugin
+      /// type to find its specializations within itself each time an
+      /// interface-querying function is called. The macro
+      /// DETAIL_IGN_PLUGIN_COMPOSEPLUGIN_DISPATCH accomplishes this for each
+      /// of the different functions by doing a compile-time check on whether
+      /// Base2 contains the specialization, and then picks Base1 if it does
+      /// not.
+      template <class Base1, class Base2>
+      class ComposePlugin : public virtual Base1, public virtual Base2
+      {
+        // Used for template metaprogramming
+        using Specialization = ComposePlugin<Base1, Base2>;
+
+        // Declare friendship
+        template <class...> friend class ignition::plugin::SpecializedPlugin;
+        template <class> friend class SelectSpecializers;
+        template <class, class> friend class ComposePlugin;
+
+        protected: ComposePlugin() = default;
+      };
+
       template <class Base>
       class SelectSpecializers : public virtual Base
       {
@@ -255,27 +276,6 @@ namespace ignition
         template <class, class> friend class ComposePlugin;
 
         protected: SelectSpecializers() = default;
-      };
-
-      /// \brief ComposePlugin provides a way for a multi-specialized Plugin
-      /// type to find its specializations within itself each time an
-      /// interface-querying function is called. The macro
-      /// DETAIL_IGN_PLUGIN_COMPOSEPLUGIN_DISPATCH accomplishes this for each
-      /// of the different functions by doing a compile-time check on whether
-      /// Base2 contains the specialization, and then picks Base1 if it does
-      /// not.
-      template <class Base1, class Base2>
-      class ComposePlugin : public virtual Base1, public virtual Base2
-      {
-        // Used for template metaprogramming
-        using Specialization = ComposePlugin<Base1, Base2>;
-
-        // Declare friendship
-        template <class...> friend class ignition::plugin::SpecializedPlugin;
-        template <class> friend class SelectSpecializers;
-        template <class, class> friend class ComposePlugin;
-
-        protected: ComposePlugin() = default;
       };
 
       /// \brief This template specialization is used when Base1 and Base2 are
