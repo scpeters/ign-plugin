@@ -19,10 +19,12 @@
 
 #include <algorithm>
 #include <cassert>
+#include <chrono>
 #include <functional>
 #include <iostream>
 #include <locale>
 #include <sstream>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -454,7 +456,19 @@ namespace ignition
 
       // NOTE: We open using RTLD_LOCAL instead of RTLD_GLOBAL to prevent the
       // symbols of different libraries from writing over each other.
-      void *dlHandle = dlopen(_full_path.c_str(), RTLD_LAZY | RTLD_LOCAL);
+      void *dlHandle;
+      try
+      {
+        std::this_thread::sleep_for(std::chrono::nanoseconds(1));
+        dlHandle = dlopen(_full_path.c_str(), RTLD_LAZY | RTLD_LOCAL);
+        std::this_thread::sleep_for(std::chrono::nanoseconds(1));
+      }
+      catch (...)
+      {
+        std::cerr << "Exception thrown while loading library [" << _full_path
+                  << "]" << std::endl;
+        return nullptr;
+      }
 
       const char *loadError = dlerror();
       if (nullptr == dlHandle || nullptr != loadError)
